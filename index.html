@@ -1,1 +1,318 @@
 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>인터랙티브 기타 줄 파동 + 소리</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      font-family: 'Arial', sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+    .container {
+      text-align: center;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      max-width: 900px;
+      width: 90%;
+    }
+    canvas {
+      background: #121212;
+      display: block;
+      margin: 20px auto;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+    }
+    h1 {
+      color: #ffcc00;
+      margin-bottom: 10px;
+      font-size: 2.5em;
+      text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+    }
+    p {
+      color: #ddd;
+      max-width: 600px;
+      margin: 0 auto 20px;
+      line-height: 1.6;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #ffcc00;
+      color: #1a1a1a;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 50px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    }
+    button:hover {
+      background: #ffdd33;
+      transform: translateY(-3px);
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+    }
+    .info-panel {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .string-info {
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .string-item {
+      background: rgba(255, 204, 0, 0.1);
+      padding: 8px 15px;
+      border-radius: 20px;
+      margin: 5px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎸 인터랙티브 가상 기타</h1>
+    <p>마우스를 기타 줄 위로 가져가면 파동이 발생하고 해당 음계의 소리가 납니다. 각 줄은 실제 기타 음계를 구현했습니다.</p>
+    
+    <div class="controls">
+      <button id="muteBtn">🔇 음소거</button>
+      <button id="demoBtn">🎵 데모 재생</button>
+    </div>
+    
+    <canvas id="guitar" width="800" height="400"></canvas>
+    
+    <div class="info-panel">
+      <h3>기타 줄 정보</h3>
+      <div class="string-info">
+        <div class="string-item">1번 줄 (E2 - 82.41Hz)</div>
+        <div class="string-item">2번 줄 (A2 - 110.00Hz)</div>
+        <div class="string-item">3번 줄 (D3 - 146.83Hz)</div>
+        <div class="string-item">4번 줄 (G3 - 196.00Hz)</div>
+        <div class="string-item">5번 줄 (B3 - 246.94Hz)</div>
+        <div class="string-item">6번 줄 (E4 - 329.63Hz)</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // 오디오 컨텍스트 초기화
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioContext = new AudioContext();
+    let isMuted = false;
+    
+    const canvas = document.getElementById('guitar');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // 기타 줄 설정
+    const stringCount = 6;
+    const points = 200;
+    const threshold = 15;
+    const stringSpacing = height / (stringCount + 1);
+    const stringColors = ['#b8860b', '#c0c0c0', '#c0c0c0', '#c0c0c0', '#c0c0c0', '#b8860b'];
+    const stringWidths = [6, 5, 4, 3, 2.5, 2];
+    
+    // 기타 음계 주파수 (E2, A2, D3, G3, B3, E4)
+    const frequencies = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63];
+    
+    // 각 줄의 파동 정보 관리
+    const strings = [];
+    for (let i = 0; i < stringCount; i++) {
+      strings.push({
+        y: stringSpacing * (i + 1),
+        waves: [],
+        isOnLine: false,
+        wasOnLine: false,
+        frequency: frequencies[i]
+      });
+    }
+
+    let mouseX = width / 2;
+    let mouseY = height / 2;
+    let time = 0;
+
+    // 마우스 이벤트 처리
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+
+      strings.forEach((string, idx) => {
+        string.isOnLine = (
+          Math.abs(mouseY - string.y) < (stringWidths[idx] / 2 + threshold) &&
+          mouseX >= 0 && mouseX <= width
+        );
+      });
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      strings.forEach(string => {
+        string.isOnLine = false;
+        string.wasOnLine = false;
+      });
+    });
+
+    // 음소거 버튼
+    document.getElementById('muteBtn').addEventListener('click', () => {
+      isMuted = !isMuted;
+      document.getElementById('muteBtn').textContent = isMuted ? "🔈 음소거 해제" : "🔇 음소거";
+    });
+
+    // 데모 재생 버튼
+    document.getElementById('demoBtn').addEventListener('click', () => {
+      playDemo();
+    });
+
+    // 기타 소리 재생 함수
+    function playStringSound(stringIdx) {
+      if (isMuted || !audioContext) return;
+      
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(strings[stringIdx].frequency, audioContext.currentTime);
+      
+      // 소리 감쇠 효과
+      gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.5);
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 1.5);
+    }
+
+    // 데모 재생 함수
+    function playDemo() {
+      let delay = 0;
+      for (let i = 0; i < stringCount; i++) {
+        setTimeout(() => {
+          createWave(i);
+          playStringSound(i);
+        }, delay);
+        delay += 300;
+      }
+    }
+
+    // 파동 생성
+    function createWave(stringIdx) {
+      strings[stringIdx].waves.push({
+        centerX: mouseX,
+        amplitude: 18 + 4 * (stringCount - stringIdx),
+        decayRate: 0.95,
+        startTime: time
+      });
+      
+      // 마우스가 줄에 닿을 때 소리 재생
+      if (strings[stringIdx].isOnLine && !strings[stringIdx].wasOnLine) {
+        playStringSound(stringIdx);
+      }
+    }
+
+    // 파동 업데이트
+    function updateWaves() {
+      strings.forEach(string => {
+        for (let i = string.waves.length - 1; i >= 0; i--) {
+          string.waves[i].amplitude *= string.waves[i].decayRate;
+          if (string.waves[i].amplitude < 0.1) {
+            string.waves.splice(i, 1);
+          }
+        }
+      });
+    }
+
+    // 그리기 함수
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+      
+      // 배경에 기타 모양 추가
+      drawGuitarBody();
+      
+      // 줄별 파동 생성
+      strings.forEach((string, idx) => {
+        if (string.isOnLine && !string.wasOnLine) {
+          createWave(idx);
+        }
+        string.wasOnLine = string.isOnLine;
+      });
+
+      updateWaves();
+
+      // 기타줄 그리기
+      strings.forEach((string, idx) => {
+        ctx.beginPath();
+        for (let i = 0; i <= points; i++) {
+          const x = (i / points) * width;
+          let y = string.y;
+
+          for (const wave of string.waves) {
+            const dx = x - wave.centerX;
+            const distanceFactor = Math.exp(-Math.abs(dx) / 150);
+            const timeFactor = time - wave.startTime;
+            y += wave.amplitude * distanceFactor * Math.sin((dx / 30) - timeFactor);
+          }
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = string.isOnLine ? '#ffcc00' : stringColors[idx];
+        ctx.lineWidth = stringWidths[idx];
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      });
+
+      // 기타 브릿지 그리기
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, height/2 - 25, 20, 50);
+      ctx.fillRect(width - 20, height/2 - 25, 20, 50);
+      
+      time += 0.08;
+      requestAnimationFrame(draw);
+    }
+
+    // 기타 몸체 그리기
+    function drawGuitarBody() {
+      ctx.fillStyle = 'rgba(125, 70, 20, 0.6)';
+      ctx.beginPath();
+      ctx.ellipse(width/2, height/2, width/2.5, height/1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = 'rgba(100, 50, 10, 0.8)';
+      ctx.fillRect(width/2 - 15, 0, 30, height);
+    }
+
+    // 오디오 컨텍스트 활성화 (사용자 상호작용 시)
+    document.body.addEventListener('click', () => {
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+    }, { once: true });
+
+    draw();
+  </script>
+</body>
+</html>
